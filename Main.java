@@ -4,60 +4,45 @@ import java.io.IOException;
 import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.concurrent.TimeUnit;
 
- class PasswordValidator {
+class PasswordValidator {
     private static final String LOG_FILE = "validation_log.txt";
+    private static final String PASSWORD_PATTERN = "^(?=.*[0-9])(?=.*[a-z]{3,})(?=.*[A-Z]{2,})(?=.*[@#$%^&*()])(?=\\S+$).{8,}$";
 
     public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
-        ExecutorService executorService = Executors.newCachedThreadPool();
+        try (Scanner scanner = new Scanner(System.in)) {
+            ExecutorService executorService = Executors.newCachedThreadPool();
 
-        System.out.println("Ingrese una contraseña para validar (o 'exit' para salir):");
-        String input = scanner.nextLine();
+            String password;
+            do {
+                System.out.println("Ingrese una contraseña para validar (o 'exit' para salir):");
+                password = scanner.nextLine();
+                final String finalPassword = password;
+                if (!finalPassword.equalsIgnoreCase("exit")) {
+                    executorService.execute(() -> validateAndLogPassword(finalPassword));
+                }
+            } while (!password.equalsIgnoreCase("exit"));
 
-        while (!input.equalsIgnoreCase("exit")) {
-            final String passwordToValidate = input; // Hacer effectively final
-            executorService.execute(() -> {
-                boolean isValid = validatePassword(passwordToValidate);
-                writeValidationResult(passwordToValidate, isValid);
-            });
-            System.out.println("Ingrese otra contraseña para validar (o 'exit' para salir):");
-            input = scanner.nextLine();
+            executorService.shutdown();
+            try {
+                if (!executorService.awaitTermination(60, TimeUnit.SECONDS)) {
+                    executorService.shutdownNow();
+                }
+            } catch (InterruptedException ex) {
+                executorService.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
         }
-
-        executorService.shutdown();
     }
 
-    private static boolean validatePassword(String password) {
-        // Longitud mínima de 8 caracteres
-        if (password.length() < 8) {
-            return false;
-        }
-
-        // Al menos un número
-        if (!password.matches(".*\\d.*")) {
-            return false;
-        }
-
-        // Al menos 2 letras mayúsculas
-        if (password.replaceAll("[^A-Z]", "").length() < 2) {
-            return false;
-        }
-
-        // Al menos 3 letras minúsculas
-        if (password.replaceAll("[^a-z]", "").length() < 3) {
-            return false;
-        }
-
-        // Al menos un caracter especial
-        Pattern specialCharsPattern = Pattern.compile("[^a-zA-Z0-9]");
-        Matcher matcher = specialCharsPattern.matcher(password);
-        return matcher.find();
+    private static void validateAndLogPassword(String password) {
+        boolean isValid = password.matches(PASSWORD_PATTERN);
+        logValidationResult(password, isValid);
+        System.out.println("Contraseña: " + password + ", Es válida: " + isValid);
     }
 
-    private static void writeValidationResult(String password, boolean isValid) {
+    private static void logValidationResult(String password, boolean isValid) {
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(LOG_FILE, true))) {
             writer.write("Contraseña: " + password + ", Es válida: " + isValid + "\n");
         } catch (IOException e) {
